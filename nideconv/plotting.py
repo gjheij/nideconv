@@ -36,8 +36,7 @@ def plot_timecourses(tc,
                             sharex=sharex,
                             sharey=sharey,
                             aspect=aspect,
-                            col_order=col_order,
-                            height=height)
+                            col_order=col_order)
 
         fac.map_dataframe(sns.lineplot,
                           x='time',
