@@ -2,8 +2,6 @@ from .response_fitter import ResponseFitter, ConcatenatedResponseFitter
 import numpy as np
 import pandas as pd
 import warnings
-import seaborn as sns
-import matplotlib.pyplot as plt
 from .plotting import plot_timecourses
 import scipy as sp
 import logging
@@ -15,15 +13,16 @@ class GroupResponseFitter(object):
     runs using a high-level interface.
     """
 
-    def __init__(self,
-                 timeseries,
-                 onsets,
-                 input_sample_rate,
-                 oversample_design_matrix=20,
-                 confounds=None,
-                 concatenate_runs=True,
-                 *args,
-                 **kwargs):
+    def __init__(
+        self,
+        timeseries,
+        onsets,
+        input_sample_rate,
+        oversample_design_matrix=20,
+        confounds=None,
+        concatenate_runs=True,
+        *args,
+        **kwargs):
 
         timeseries = pd.DataFrame(timeseries.copy())
 
@@ -66,12 +65,14 @@ class GroupResponseFitter(object):
                 self.index_columns.append(c)
 
                 if self.timeseries[c].dtype != self.onsets[c].dtype:
-                    logging.warning('The dtype of column "{}" is different for '
-                                    'onsets ({}) and timeseries ({}).\n'
-                                    'Converting dtype of onsets to {}...'.format(c,
-                                                                                 self.onsets[c].dtype,
-                                                                                 self.timeseries[c].dtype,
-                                                                                 self.timeseries[c].dtype))
+                    logging.warning(
+                        'The dtype of column "{}" is different for onsets ({}) and timeseries ({}).\n'
+                        'Converting dtype of onsets to {}...'.format(
+                        c,
+                        self.onsets[c].dtype,
+                        self.timeseries[c].dtype,
+                        self.timeseries[c].dtype))
+                    
                     self.onsets[c] = self.onsets[c].astype(
                         self.timeseries[c].dtype)
 
@@ -81,9 +82,10 @@ class GroupResponseFitter(object):
             else:
                 self.onsets['event_type'] = 'intercept'
 
-        index = pd.MultiIndex(names=self.index_columns,
-                              levels=[[]]*len(self.index_columns),
-                              codes=[[]]*len(self.index_columns),)
+        index = pd.MultiIndex(
+            names=self.index_columns,
+            levels=[[]]*len(self.index_columns),
+            codes=[[]]*len(self.index_columns),)
         self.response_fitters = pd.Series(index=index)
 
         if self.index_columns is []:
@@ -91,9 +93,10 @@ class GroupResponseFitter(object):
                             'or runs')
         else:
             self.timeseries = self.timeseries.set_index(self.index_columns)
-            self.timeseries['t'] = _make_time_column(self.timeseries,
-                                                     self.index_columns,
-                                                     input_sample_rate)
+            self.timeseries['t'] = _make_time_column(
+                self.timeseries,
+                self.index_columns,
+                input_sample_rate)
             self.timeseries.set_index('t', inplace=True, append=True)
 
             self.onsets = self.onsets.set_index(
@@ -101,35 +104,38 @@ class GroupResponseFitter(object):
 
             if self.confounds is not None:
                 self.confounds = self.confounds.set_index(self.index_columns)
-                self.confounds['t'] = _make_time_column(self.confounds,
-                                                        self.index_columns,
-                                                        input_sample_rate)
+                self.confounds['t'] = _make_time_column(
+                    self.confounds,
+                    self.index_columns,
+                    input_sample_rate)
 
                 self.confounds = self.confounds.set_index('t', append=True)
 
             for idx, ts in self.timeseries.groupby(level=self.index_columns):
 
-                rf = ResponseFitter(ts,
-                                    input_sample_rate,
-                                    self.oversample_design_matrix,
-                                    *args,
-                                    **kwargs)
+                rf = ResponseFitter(
+                    ts,
+                    input_sample_rate,
+                    self.oversample_design_matrix,
+                    *args,
+                    **kwargs)
+                
                 self.response_fitters.loc[idx] = rf
                 if self.confounds is not None:
                     if type(idx) is int:
                         idx = idx,
-                    self.response_fitters.loc[idx].add_confounds(
-                        'confounds', self.confounds.loc[idx])
+                    self.response_fitters.loc[idx].add_confounds('confounds', self.confounds.loc[idx])
 
-    def add_event(self,
-                  event=None,
-                  basis_set='fir',
-                  interval=[0, 10],
-                  n_regressors=None,
-                  covariates=None,
-                  add_intercept=True,
-                  show_warnings=True,
-                  **kwargs):
+    def add_event(
+        self,
+        event=None,
+        basis_set='fir',
+        interval=[0, 10],
+        n_regressors=None,
+        covariates=None,
+        add_intercept=True,
+        show_warnings=True,
+        **kwargs):
 
         if not hasattr(self, 'events'):
             self.events = []
@@ -145,11 +151,14 @@ class GroupResponseFitter(object):
 
         if type(covariates) is str:
             covariates = [covariates]
-
+        
         for e in event:
             self.events += e
 
         for i, (col, ts) in self._groupby_ts_runs():
+            # print(i)
+            # print(col)
+            # print(ts)
             for e in event:
 
                 if type(col) is not tuple:
@@ -160,7 +169,6 @@ class GroupResponseFitter(object):
                         warnings.warn('Event %s is not available for run %s. Event is ignored for this '
                                   'run' % (e, col))
                 else:
-
                     if covariates is None:
                         covariate_matrix = None
                     else:
@@ -182,23 +190,24 @@ class GroupResponseFitter(object):
 
                     # print(e, self.onsets.loc[[col + (e,)], 'onset'].shape, durations.sha[p)
 
-                    self.response_fitters[col].add_event(e,
-                                                         onsets=self.onsets.loc[[
-                                                             col + (e,)], 'onset'],
-                                                         basis_set=basis_set,
-                                                         interval=interval,
-                                                         n_regressors=n_regressors,
-                                                         durations=durations,
-                                                         covariates=covariate_matrix)
+                    self.response_fitters[col].add_event(
+                        e,
+                        onsets=self.onsets.loc[[col + (e,)], 'onset'],
+                        basis_set=basis_set,
+                        interval=interval,
+                        n_regressors=n_regressors,
+                        durations=durations,
+                        covariates=covariate_matrix)
 
 
-    def fit(self,
-            concatenate_runs=None,
-            type='ols',
-            cv=20,
-            alphas=None,
-            store_residuals=False,
-            progressbar=False):
+    def fit(
+        self,
+        concatenate_runs=None,
+        type='ols',
+        cv=20,
+        alphas=None,
+        store_residuals=False,
+        progressbar=False):
 
         if progressbar:
             from tqdm import tqdm
@@ -516,7 +525,7 @@ class GroupResponseFitter(object):
                                                                                  cutoff=cutoff,
                                                                                  negative_peak=negative_peak,
                                                                                  include_prominence=include_prominence)).tolist())
-        ttp.index = self.response_fitters.index
+        # ttp.index = self.response_fitters.index
 
         return ttp
 
