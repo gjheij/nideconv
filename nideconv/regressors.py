@@ -10,22 +10,29 @@ import scipy as sp
 from scipy import signal, interpolate
 import pandas as pd
 import warnings
-from .utils import (get_proper_interval,
-                    double_gamma_with_d,
-                    get_time_to_peak_from_timecourse,
-                    double_gamma_with_d_time_derivative)
+from .utils import (
+    get_proper_interval,
+    double_gamma_with_d,
+    get_time_to_peak_from_timecourse,
+    double_gamma_with_d_time_derivative_dispersion,
+    double_gamma_with_d_time_derivative,
+)
 import logging
 
 
-def _get_timepoints(interval,
-                    sample_rate,
-                    oversample):
+def _get_timepoints(
+    interval,
+    sample_rate,
+    oversample,
+    endpoint=False):
 
     total_length = interval[1] - interval[0]
-    timepoints = np.linspace(interval[0],
-                             interval[1],
-                             int(total_length * sample_rate * oversample),
-                             endpoint=False)
+    timepoints = np.linspace(
+        interval[0],
+        interval[1],
+        int(total_length * sample_rate * oversample),
+        endpoint=endpoint)
+    
     return timepoints
 
 
@@ -37,34 +44,33 @@ def _create_fir_basis(interval, sample_rate, n_regressors, oversample=1):
     basis = np.eye(n_regressors)
     basis = np.vstack((basis, basis[-1]))
 
-    orig_timepoints = np.linspace(interval[0],
-                                  interval[1],
-                                  n_regressors + 1,  # Include endpoint to allow interpolation
-                                  endpoint=True)                  # below
+    orig_timepoints = np.linspace(
+        interval[0],
+        interval[1],
+        n_regressors + 1,  # Include endpoint to allow interpolation
+        endpoint=True)                  # below
 
     timepoints = _get_timepoints(interval, sample_rate, oversample)
 
-    fir = interpolate.interp1d(orig_timepoints,
-                               basis,
-                               kind='nearest',
-                               axis=0)(timepoints)
+    fir = interpolate.interp1d(
+        orig_timepoints,
+        basis,
+        kind='nearest',
+        axis=0)(timepoints)
 
-    return pd.DataFrame(fir,
-                        index=timepoints,
-                        columns=regressor_labels) \
-        .rename_axis('time') \
-        .rename_axis('basis function', axis=1)
-
+    return pd.DataFrame(
+        fir,
+        index=timepoints,
+        columns=regressor_labels).rename_axis('time').rename_axis('basis function', axis=1)
 
 def _create_canonical_hrf_basis(interval, sample_rate, n_regressors, oversample=1):
     timepoints = _get_timepoints(interval, sample_rate, oversample)
     basis_function = double_gamma_with_d(timepoints)[:, np.newaxis]
 
-    return pd.DataFrame(basis_function,
-                        index=timepoints,
-                        columns=['canonical HRF']) \
-        .rename_axis('time') \
-        .rename_axis('basis function', axis=1)
+    return pd.DataFrame(
+        basis_function,
+        index=timepoints,
+        columns=['canonical HRF']).rename_axis('time').rename_axis('basis function', axis=1)
 
 
 def _create_canonical_hrf_with_time_derivative_basis(interval, sample_rate, n_regressors, oversample=1):
@@ -73,12 +79,48 @@ def _create_canonical_hrf_with_time_derivative_basis(interval, sample_rate, n_re
     hrf = double_gamma_with_d(timepoints)
     dt_hrf = double_gamma_with_d_time_derivative(timepoints)
 
-    return pd.DataFrame(np.array([hrf, dt_hrf]).T,
-                        index=timepoints,
-                        columns=['HRF', 'HRF (derivative wrt time-to-peak)']) \
-        .rename_axis('time') \
-        .rename_axis('basis function', axis=1)
+    return pd.DataFrame(
+        np.array([hrf, dt_hrf]).T,
+        index=timepoints,
+        columns=['HRF', 'HRF (derivative wrt time-to-peak)']).rename_axis('time').rename_axis('basis function', axis=1)
 
+def _create_canonical_hrf_with_time_derivative_dispersion_basis(interval, sample_rate, n_regressors, oversample=1):
+    timepoints = _get_timepoints(interval, sample_rate, oversample)
+
+    # hrf = double_gamma_with_d(timepoints)
+    # dt_hrf = double_gamma_with_d_time_derivative(timepoints)
+    # disp_hrf = double_gamma_with_d_time_derivative_dispersion(timepoints)
+    from nilearn.glm.first_level import hemodynamic_models
+    tr = 1/sample_rate
+
+    # for some reason, it's iffy when using 0 as starting point
+    if interval[0] == 0:
+        time_length = timepoints[-1]-timepoints[0]
+    else:
+        time_length = interval[1]-interval[0]
+
+    hrf = hemodynamic_models.glover_hrf(
+        tr, 
+        oversampling=oversample, 
+        time_length=time_length, 
+        onset=abs(interval[0]))
+
+    dt_hrf = hemodynamic_models.glover_time_derivative(
+        tr, 
+        oversampling=oversample, 
+        time_length=time_length,
+        onset=abs(interval[0]))    
+
+    disp_hrf = hemodynamic_models.glover_dispersion_derivative(
+        tr, 
+        oversampling=oversample, 
+        time_length=time_length, 
+        onset=abs(interval[0]))        
+
+    return pd.DataFrame(
+        np.array([hrf, dt_hrf,disp_hrf]).T,
+        index=timepoints,
+        columns=['HRF', 'HRF (derivative wrt time-to-peak)','HRF (dispersion wrt time-to-peak)']).rename_axis('time').rename_axis('basis function', axis=1)
 
 def _create_fourier_basis(interval, sample_rate, n_regressors, oversample=1):
     """"""
@@ -113,6 +155,7 @@ def _create_fourier_basis(interval, sample_rate, n_regressors, oversample=1):
 def _create_legendre_basis(interval, sample_rate, n_regressors, oversample=1):
     """"""
 
+    timepoints = _get_timepoints(interval, sample_rate, oversample)
     regressor_labels = ['legendre_%d' %
                         poly for poly in np.arange(1, n_regressors + 1)]
     x = np.linspace(-1, 1, int(np.diff(interval))
@@ -138,29 +181,23 @@ def _create_dct_basis(interval, sample_rate, n_regressors, oversample=1):
     
     nfct = np.sqrt(2.0 / len_tim)
     
-    L_dct[:, 0] = 1.0
+    # L_dct[:, 0] = 1.0
     
-    regressor_labels = ['dct_intercept'] + [f'dct_{n}' for n in range(1, n_regressors)]
+    # regressor_labels = ['dct_intercept'] + [f'dct_{n}' for n in range(1, n_regressors)]
+    regressor_labels = [f'dct_{n}' for n in range(0, n_regressors)]
     
-    for k in range(1, n_regressors):
+    for k in range(0, n_regressors):
         L_dct[:, k] = nfct * np.cos((np.pi / len_tim) * (n_times + 0.5) * k)
-        
-        
-    
 
-    return pd.DataFrame(L_dct,
-                        index=timepoints,
-                        columns=regressor_labels) \
-        .rename_axis('time') \
-        .rename_axis('basis function', axis=1)
+    return pd.DataFrame(
+        L_dct,
+        index=timepoints,
+        columns=regressor_labels).rename_axis('time').rename_axis('basis function', axis=1)
 
 
 class Regressor(object):
 
-    def __init__(self,
-                 name,
-                 fitter):
-
+    def __init__(self, name, fitter):
         self.name = name
         self.fitter = fitter
 
@@ -172,7 +209,7 @@ class Confound(Regressor):
 
     def __init__(self, name, fitter, confounds):
 
-        super(Confound, self).__init__(name, fitter)
+        Regressor.__init__(self,name, fitter)
         self.confounds = pd.DataFrame(confounds)
 
     def create_design_matrix(self, oversample=1):
@@ -185,13 +222,14 @@ class Confound(Regressor):
 
 class Intercept(Confound):
 
-    def __init__(self,
-                 name,
-                 fitter):
+    def __init__(self,name,fitter):
 
         confound = pd.DataFrame(np.ones(len(fitter.input_signal)),
                                 columns=['intercept'])
-        super(Intercept, self).__init__(name, fitter, confound)
+        Confound.__init__(
+            self,name, 
+            fitter, 
+            confound)
 
 
 class Event(Regressor):
@@ -200,15 +238,17 @@ class Event(Regressor):
     Design matrices for an event_type can be built up of different basis sets,
     and one can choose the time interval over which to fit the response. """
 
-    def __init__(self,
-                 name,
-                 fitter,
-                 basis_set='fir',
-                 interval=[0, 10],
-                 n_regressors=None,
-                 onsets=None,
-                 durations=None,
-                 covariates=None):
+    def __init__(
+        self,
+        name,
+        fitter,
+        basis_set='fir',
+        interval=[0, 10],
+        n_regressors=None,
+        onsets=None,
+        durations=None,
+        covariates=None):
+
         """ Initialize a ResponseFitter object.
 
         Parameters
@@ -246,7 +286,7 @@ class Event(Regressor):
             are the covariate values of each of the events in onsets.
 
         """
-        super(Event, self).__init__(name, fitter)
+        Regressor.__init__(self, name, fitter)
 
         self.basis_set = basis_set
         self.interval = interval
@@ -295,13 +335,17 @@ class Event(Regressor):
         else:
             self.covariates = pd.DataFrame(covariates)
 
+        # print(self.covariates)
         if type(self.basis_set) is not str:
             self.n_regressors = self.basis_set.shape[1]
-            self.basis_set = pd.DataFrame(self.basis_set,
-                                          index=np.linspace(*self.interval,
-                                                            num=len(
-                                                                self.basis_set),
-                                                            endpoint=True))
+            self.basis_set = pd.DataFrame(
+                self.basis_set,
+                index=np.linspace(
+                    *self.interval,
+                    num=len(self.basis_set),
+                    endpoint=True
+                )
+            )
 
         else:
             if self.basis_set in ['fir', 'dct']:
@@ -313,10 +357,9 @@ class Event(Regressor):
                                   'per covariate' % self.n_regressors)
 
                 if self.n_regressors > (length_interval / self.sample_duration):
-                    warnings.warn('Number of regressors ({}) is larger than the number of timepoints in the interval '
-                                  '({}). '
-                                  'This model can only be fit using regularized methods.'.format(self.n_regressors,
-                                                                                                 int(length_interval / self.sample_rate)))
+                    warnings.warn('Number of regressors ({}) is larger than the number of timepoints in the interval ({}). This model can only be fit using regularized methods.'.format(
+                        self.n_regressors,
+                        int(length_interval / self.sample_rate)))
 
             # legendre and fourier basis sets should be odd
             elif self.basis_set in ('fourier', 'legendre'):
@@ -340,6 +383,12 @@ class Event(Regressor):
                                   'regressors per covariate!')
 
                 self.n_regressors = 2
+
+            elif self.basis_set == 'canonical_hrf_with_time_derivative_dispersion':
+                if (self.n_regressors is not None) and (self.n_regressors != 3):
+                    warnings.warn('With the canonical HRF with time/ and dispersion derivative as a basis set, you can have only THREE regressors per covariate!')
+
+                self.n_regressors = 3             
 
     def event_timecourse(self,
                          covariate=None,
@@ -394,29 +443,32 @@ class Event(Regressor):
         self.X = np.zeros((self.fitter.input_signal.shape[0] * oversample,
                            self.n_regressors * self.covariates.shape[1]))
 
-        L = self.get_basis_function(oversample)
+        self.L = self.get_basis_function(oversample)
 
-        columns = pd.MultiIndex.from_product(([self.name], self.covariates.columns, L.columns),
+        columns = pd.MultiIndex.from_product(([self.name], self.covariates.columns, self.L.columns),
                                              names=['event type', 'covariate', 'regressor'])
 
-        oversampled_timepoints = np.linspace(0,
-                                             self.fitter.input_signal.shape[0] *
-                                             self.sample_duration,
-                                             self.fitter.input_signal.shape[0] *
-                                             oversample,
-                                             endpoint=False)
+        oversampled_timepoints = np.linspace(
+            0,
+            self.fitter.input_signal.shape[0] *
+            self.sample_duration,
+            self.fitter.input_signal.shape[0] *
+            oversample,
+            endpoint=False)
 
-        self.X = pd.DataFrame(self.X,
-                              columns=columns,
-                              index=oversampled_timepoints)
+        self.X = pd.DataFrame(
+            self.X,
+            columns=columns,
+            index=oversampled_timepoints)
 
         for covariate in self.covariates.columns:
-            event_timepoints = self.event_timecourse(covariate=covariate,
-                                                     oversample=oversample)
+            event_timepoints = self.event_timecourse(
+                covariate=covariate,
+                oversample=oversample)
 
-            for regressor in L.columns:
+            for regressor in self.L.columns:
                 self.X[self.name, covariate, regressor] = sp.signal.convolve(event_timepoints,
-                                                                             L[regressor],
+                                                                             self.L[regressor],
                                                                              'full')[:len(self.X)]
         if oversample != 1:
             self.downsample_design_matrix()
@@ -438,47 +490,78 @@ class Event(Regressor):
     def get_basis_function(self, oversample=1):
 
         # only for fir, the nr of regressors is dictated by the interval and sample rate
-        if type(self.basis_set) is str:
+        if isinstance(self.basis_set, str):
 
             if self.basis_set == 'fir':
                 L = _create_fir_basis(
-                    self.interval, self.sample_rate, self.n_regressors, oversample)
-
+                    self.interval, 
+                    self.sample_rate, 
+                    self.n_regressors, 
+                    oversample
+                )
             elif self.basis_set == 'fourier':
-                L = _create_fourier_basis(
-                    self.interval, self.sample_rate, self.n_regressors, oversample)
-
+                L = _create_fourier_basis(                    
+                    self.interval, 
+                    self.sample_rate, 
+                    self.n_regressors, 
+                    oversample
+                )
             elif self.basis_set == 'dct':
                 L = _create_dct_basis(
-                    self.interval, self.sample_rate, self.n_regressors, oversample)
+                    self.interval, 
+                    self.sample_rate, 
+                    self.n_regressors, 
+                    oversample
+                )
 
             elif self.basis_set == 'legendre':
                 L = _create_legendre_basis(
-                    self.interval, self.sample_rate, self.n_regressors, oversample)
+                    self.interval, 
+                    self.sample_rate, 
+                    self.n_regressors, 
+                    oversample
+                )                    
 
             elif self.basis_set == 'canonical_hrf':
-                L = _create_canonical_hrf_basis(self.interval,
-                                                self.sample_rate,
-                                                1,
-                                                oversample)
+                L = _create_canonical_hrf_basis(
+                    self.interval,
+                    self.sample_rate,
+                    1,
+                    oversample)
+                
                 regressor_labels = ['canonical_hrf']
 
             elif self.basis_set == 'canonical_hrf_with_time_derivative':
-                L = _create_canonical_hrf_with_time_derivative_basis(self.interval,
-                                                                     self.sample_rate,
-                                                                     2,
-                                                                     oversample)
-                regressor_labels = ['canonical_hrf',
-                                    'canonical_hrf_time_derivative']
+                L = _create_canonical_hrf_with_time_derivative_basis(
+                    self.interval,
+                    self.sample_rate,
+                    2,
+                    oversample)
+                
+                regressor_labels = [
+                    'canonical_hrf',
+                    'canonical_hrf_time_derivative'
+                ]
+                
+            elif self.basis_set == 'canonical_hrf_with_time_derivative_dispersion':
+                L = _create_canonical_hrf_with_time_derivative_dispersion_basis(
+                    self.interval,
+                    self.sample_rate,
+                    3,
+                    oversample)
+                
+                regressor_labels = [
+                    'canonical_hrf',
+                    'canonical_hrf_time_derivative',
+                    'canonical_hrf_dispersion_derivative'
+                ]
 
         else:
-            L = np.zeros(
-                (self.basis_set.shape[0] * oversample, self.n_regressors))
+            L = np.zeros((self.basis_set.shape[0] * oversample, self.n_regressors))
 
-            interp = sp.interpolate.interp1d(
-                self.basis_set.index, self.basis_set.values, axis=0)
+            timepoints = _get_timepoints(self.interval, self.sample_rate, oversample)
+            interp = sp.interpolate.interp1d(self.basis_set.index, self.basis_set.values, axis=0)
             L = interp(timepoints)
-
 
         return L
 

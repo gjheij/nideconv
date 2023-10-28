@@ -4,10 +4,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn import linear_model
-import scipy as sp
 from .plotting import plot_timecourses, plot_design_matrix
-from nilearn import input_data, image
-from nilearn._utils import load_niimg
 from .utils import get_time_to_peak_from_timecourse
 
 
@@ -17,11 +14,13 @@ class ResponseFitter(object):
     ResponseFitter can, for each event type, use different basis function sets,
     see Event."""
 
-    def __init__(self,
-                 input_signal,
-                 sample_rate,
-                 oversample_design_matrix=20,
-                 add_intercept=True, **kwargs):
+    def __init__(
+        self,
+        input_signal,
+        sample_rate,
+        oversample_design_matrix=20,
+        add_intercept=True, 
+        **kwargs):
         """ Initialize a ResponseFitter object.
 
         Parameters
@@ -37,7 +36,7 @@ class ResponseFitter(object):
         **kwargs : dict
             keyward arguments to be internalized by the ResponseFitter object
         """
-        super(ResponseFitter, self).__init__()
+        # super(ResponseFitter, self).__init__()
         self.__dict__.update(kwargs)
 
         self.sample_rate = sample_rate
@@ -45,11 +44,12 @@ class ResponseFitter(object):
 
         self.oversample_design_matrix = oversample_design_matrix
 
-        self.input_signal_time_points = np.linspace(0,
-                                                    input_signal.shape[0] *
-                                                    self.sample_duration,
-                                                    input_signal.shape[0],
-                                                    endpoint=False)
+        self.input_signal_time_points = np.linspace(
+            0,
+            input_signal.shape[0] *
+            self.sample_duration,
+            input_signal.shape[0],
+            endpoint=False)
 
         self.input_signal = pd.DataFrame(input_signal)
         self.input_signal.index = pd.Index(self.input_signal_time_points,
@@ -92,15 +92,16 @@ class ResponseFitter(object):
         else:
             self.X = pd.concat((self.X, regressor.X), 1)
 
-    def add_event(self,
-                  event_name,
-                  onsets=None,
-                  basis_set='fir',
-                  interval=[0, 10],
-                  n_regressors=None,
-                  durations=None,
-                  covariates=None,
-                  **kwargs):
+    def add_event(
+        self,
+        event_name,
+        onsets=None,
+        basis_set='fir',
+        interval=[0, 10],
+        n_regressors=None,
+        durations=None,
+        covariates=None,
+        **kwargs):
         """
         create design matrix for a given event_type.
 
@@ -121,15 +122,16 @@ class ResponseFitter(object):
         assert event_name not in self.X.columns.get_level_values(
             0), "The event_name %s is already in use" % event_name
 
-        ev = Event(name=event_name,
-                   onsets=onsets,
-                   basis_set=basis_set,
-                   interval=interval,
-                   n_regressors=n_regressors,
-                   durations=durations,
-                   covariates=covariates,
-                   fitter=self,
-                   **kwargs)
+        ev = Event(
+            name=event_name,
+            onsets=onsets,
+            basis_set=basis_set,
+            interval=interval,
+            n_regressors=n_regressors,
+            durations=durations,
+            covariates=covariates,
+            fitter=self,
+            **kwargs)
 
         self._add_regressor(ev)
 
@@ -184,16 +186,19 @@ class ResponseFitter(object):
         sem = pd.DataFrame(sem, index=c.index, columns=self.sigma2.index)
 
         if melt:
-            sem = sem.reset_index().melt(id_vars=['event type',
-                                                  'covariate',
-                                                  'time'],
-                                         var_name='roi')
+            sem = sem.reset_index().melt(
+                id_vars=[
+                    'event type',
+                    'covariate',
+                    'time'],
+                var_name='roi')
 
         return sem
 
-    def get_t_value_timecourses(self,
-                                oversample=None,
-                                melt=False):
+    def get_t_value_timecourses(
+            self,
+            oversample=None,
+            melt=False):
 
         tc = self.get_timecourses(oversample=oversample,
                                   melt=melt)
@@ -260,9 +265,10 @@ class ResponseFitter(object):
 
         if alphas is None:
             alphas = np.logspace(7, 0, 20)
-        self.rcv = linear_model.RidgeCV(alphas=alphas,
-                                        fit_intercept=False,
-                                        cv=cv)
+        self.rcv = linear_model.RidgeCV(
+            alphas=alphas,
+            fit_intercept=False,
+            cv=cv)
         self.rcv.fit(self.X, self.input_signal)
 
         self.betas = self.rcv.coef_.T
@@ -277,16 +283,19 @@ class ResponseFitter(object):
         self._send_betas_to_regressors()
 
     def _send_betas_to_regressors(self):
-        self.betas = pd.DataFrame(self.betas,
-                                  index=self.X.columns,
-                                  columns=self.input_signal.columns)
+        self.betas = pd.DataFrame(
+            self.betas,
+            index=self.X.columns,
+            columns=self.input_signal.columns)
 
         for key in self.events:
             self.events[key].betas = self.betas.loc[[key]]
 
-    def predict_from_design_matrix(self,
-                                   X=None,
-                                   melt=False):
+    def predict_from_design_matrix(
+        self,
+        X=None,
+
+        melt=False):
         """
         predict a signal given a design matrix. Requires regression to have
         been run.
@@ -309,10 +318,10 @@ class ResponseFitter(object):
 
         prediction = self.X.dot(self.betas)
         if melt:
-            prediction = prediction.reset_index()\
-                                   .melt(var_name='roi',
-                                         value_name='prediction',
-                                         id_vars='time')
+            prediction = prediction.reset_index().melt(
+                var_name='roi',
+                value_name='prediction',
+                id_vars='time')
 
         else:
             prediction.columns = ['prediction for %s' %
@@ -326,28 +335,40 @@ class ResponseFitter(object):
             oversample = self.oversample_design_matrix
 
         names = ['event type', 'covariate', 'time']
-        row_index = pd.MultiIndex(names=names,
-                                  levels=[[], [], []],
-                                  codes=[[], [], []])
+        row_index = pd.MultiIndex(
+            names=names,
+            levels=[[], [], []],
+            codes=[[], [], []])
 
         bf = pd.DataFrame(columns=self.X.columns, index=row_index)
 
         for event_type, event in self.events.items():
             for covariate in event.covariates.columns:
                 ev = event.get_basis_function(oversample=oversample)
-                ev.index = pd.MultiIndex.from_product([[event_type], [covariate], ev.index],
-                                                      names=names)
-                ev.columns = pd.MultiIndex.from_product([[event_type], [covariate], ev.columns],
-                                                        names=['event type', 'covariate', 'regressor'])
+                ev.index = pd.MultiIndex.from_product(
+                    [
+                        [event_type], 
+                        [covariate], 
+                        ev.index
+                    ],
+                    names=names)
+                ev.columns = pd.MultiIndex.from_product(
+                    [
+                        [event_type], 
+                        [covariate], 
+                        ev.columns
+                    ],
+                    names=['event type', 'covariate', 'regressor'])
                 bf = pd.concat((bf, ev), axis=0, )
 
         bf.fillna(0, inplace=True)
 
         return bf
 
-    def get_timecourses(self,
-                        oversample=None,
-                        melt=False):
+    def get_timecourses(
+            self,
+            oversample=None,
+            melt=False):
         assert hasattr(
             self, 'betas'), 'no betas found, please run regression before prediction'
 
@@ -361,18 +382,22 @@ class ResponseFitter(object):
             timecourses = pd.concat((timecourses, tc), ignore_index=False)
 
         if melt:
-            timecourses = timecourses.reset_index().melt(id_vars=['event type',
-                                                                  'covariate',
-                                                                  'time'],
-                                                         var_name='roi')
+            timecourses = timecourses.reset_index().melt(
+                id_vars=[
+                    'event type',
+                    'covariate',
+                    'time'
+                ],
+                var_name='roi')
 
         return timecourses
 
-    def plot_timecourses(self,
-                         oversample=None,
-                         legend=True,
-                         *args,
-                         **kwargs):
+    def plot_timecourses(
+        self,
+        oversample=None,
+        legend=True,
+        *args,
+        **kwargs):
 
         if oversample is None:
             oversample = 1
@@ -381,10 +406,12 @@ class ResponseFitter(object):
                                   oversample=oversample)
         tc['subject'] = 'dummy'
 
-        return plot_timecourses(tc,
-                                oversample=oversample,
-                                legend=legend,
-                                *args, **kwargs)
+        return plot_timecourses(
+            tc,
+            oversample=oversample,
+            legend=legend,
+            *args, 
+            **kwargs)
 
     def get_rsq(self):
         """
@@ -437,31 +464,40 @@ class ResponseFitter(object):
         indices[indices >= signal.shape[0]] = -1
 
         # Make dummy element to fill epochs with nans if they fall out of the timeseries
-        signal = pd.concat((signal, pd.DataFrame(np.zeros((1, signal.shape[1])) * np.nan,
-                                                 columns=signal.columns,
-                                                 index=[np.nan])),
-                           0)
+        signal = pd.concat(
+            (
+                signal, 
+                pd.DataFrame(
+                    np.zeros((1, signal.shape[1])) * np.nan,
+                    columns=signal.columns,
+                    index=[np.nan])
+            ), 0)
 
         # Calculate epochs
         epochs = signal.values[indices].swapaxes(-1, -2)
         epochs = epochs.reshape((epochs.shape[0], np.prod(epochs.shape[1:])))
-        columns = pd.MultiIndex.from_product([signal.columns,
-                                              np.linspace(interval[0], interval[1], interval_n_samples)],
-                                             names=['roi', 'time'])
-        epochs = pd.DataFrame(epochs,
-                              columns=columns,
-                              index=pd.Index(onsets, name='onset'))
+        columns = pd.MultiIndex.from_product(
+            [
+                signal.columns,
+                np.linspace(interval[0], interval[1], interval_n_samples)
+            ],
+            names=['roi', 'time'])
+        epochs = pd.DataFrame(
+            epochs,
+            columns=columns,
+            index=pd.Index(onsets, name='onset'))
 
         # Get rid of incomplete epochs:
         if remove_incomplete_epochs:
             epochs = epochs[~epochs.isnull().any(1)]
         return epochs
 
-    def get_time_to_peak(self,
-                         oversample=None,
-                         cutoff=1.0,
-                         negative_peak=False,
-                         include_prominence=False):
+    def get_time_to_peak(
+        self,
+        oversample=None,
+        cutoff=1.0,
+        negative_peak=False,
+        include_prominence=False):
 
         if oversample is None:
             oversample = self.oversample_design_matrix
@@ -480,16 +516,17 @@ class ResponseFitter(object):
 
     def get_original_signal(self, melt=False):
         if melt:
-            return self.input_signal.reset_index()\
-                                    .melt(var_name='roi',
-                                          value_name='signal',
-                                          id_vars='time')
+            return self.input_signal.reset_index().melt(
+                var_name='roi',
+                value_name='signal',
+                id_vars='time')
         else:
             return self.input_signal
 
-    def plot_model_fit(self,
-                       xlim=None,
-                       legend=True):
+    def plot_model_fit(
+        self,
+        xlim=None,
+        legend=True):
 
         n_rois = self.input_signal.shape[1]
         if n_rois > 24:
@@ -506,10 +543,11 @@ class ResponseFitter(object):
         else:
             col_wrap = 4
 
-        fac = sns.FacetGrid(data,
-                            col='roi',
-                            col_wrap=col_wrap,
-                            aspect=3)
+        fac = sns.FacetGrid(
+            data,
+            col='roi',
+            col_wrap=col_wrap,
+            aspect=3)
 
         fac.map(plt.plot, 'time', 'signal', color='k', label='signal')
         fac.map(plt.plot, 'time', 'prediction', color='r',
@@ -570,10 +608,11 @@ class ConcatenatedResponseFitter(ResponseFitter):
         raise Exception('ConcatenatedResponseFitter does not allow for adding'
                         'events.')
 
-    def plot_timecourses(self,
-                         oversample=None,
-                         *args,
-                         **kwargs):
+    def plot_timecourses(
+            self,
+            oversample=None,
+            *args,
+            **kwargs):
 
         tc = self.get_timecourses(melt=True,
                                   oversample=oversample)
