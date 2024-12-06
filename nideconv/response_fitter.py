@@ -86,11 +86,14 @@ class ResponseFitter(object):
             oversample = self.oversample_design_matrix
 
         regressor.create_design_matrix(oversample=oversample)
-
         if self.X.shape[1] == 0:
-            self.X = pd.concat([regressor.X, self.X], axis=1)
+            self.X_list = [regressor.X, self.X]
         else:
-            self.X = pd.concat([self.X, regressor.X], axis=1)
+            self.X_list = [self.X, regressor.X]
+
+        self.X = pd.concat(self.X_list, axis=1)
+        self.X.columns.names = regressor.X.columns.names
+        
 
     def add_event(
         self,
@@ -287,7 +290,7 @@ class ResponseFitter(object):
             self.betas,
             index=self.X.columns,
             columns=self.input_signal.columns)
-
+        
         for key in self.events:
             self.events[key].betas = self.betas.loc[[key]]
 
