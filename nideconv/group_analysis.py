@@ -89,8 +89,7 @@ class GroupResponseFitter(object):
         self.response_fitters = pd.Series(index=index)
 
         if self.index_columns is []:
-            raise Exception('GroupDeconvolution is only to be used for datasets with multiple subjects'
-                            'or runs')
+            raise Exception('GroupDeconvolution is only to be used for datasets with multiple subjects or runs')
         else:
             self.timeseries = self.timeseries.set_index(self.index_columns)
             self.timeseries['t'] = _make_time_column(
@@ -99,15 +98,15 @@ class GroupResponseFitter(object):
                 input_sample_rate)
             self.timeseries.set_index('t', inplace=True, append=True)
 
-            self.onsets = self.onsets.set_index(
-                self.index_columns + ['event_type'])
+            self.onsets = self.onsets.set_index(self.index_columns + ['event_type'])
 
             if self.confounds is not None:
                 self.confounds = self.confounds.set_index(self.index_columns)
                 self.confounds['t'] = _make_time_column(
                     self.confounds,
                     self.index_columns,
-                    input_sample_rate)
+                    input_sample_rate
+                )
 
                 self.confounds = self.confounds.set_index('t', append=True)
 
@@ -187,7 +186,7 @@ class GroupResponseFitter(object):
                     else:
                         durations = None
 
-                    # print(e, self.onsets.loc[[col + (e,)], 'onset'].shape, durations.sha[p)
+                    # print(e, self.onsets.loc[[col + (e,)], 'onset'].shape)
 
                     self.response_fitters[col].add_event(
                         e,
